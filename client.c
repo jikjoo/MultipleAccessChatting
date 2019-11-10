@@ -12,7 +12,6 @@
 void* c_write();
 void* c_read();
 
-pthread_mutex_t mutexsum = PTHREAD_MUTEX_INITIALIZER;  
 int socket_num;
 
 int main(int argc,char *argv[]){
@@ -36,13 +35,14 @@ int main(int argc,char *argv[]){
     printf("Input Server IP Address : %s\n","127.0.0.1");
     printf("Input Server Port Number : %d\n",PORT);
     printf("open!! client\n");
-
+    // Make a call
     if (connect(socket_num, (struct sockaddr *)&server, sizeof(server)) < 0) 
     { 
         printf("\nfail!! to connect Server\n"); 
         return -1; 
     } 
     printf("Success to connect to server!\n");
+    // code not using thread
     /* while(1){
         
         bzero(buffer,MLIM);
@@ -106,11 +106,12 @@ void *c_read(){
             close(socket_num);
             break;
         }
-        else if(r==0){
+        else if(r==0){ // nothing recept cuz socket is closed
             close(socket_num);
             break;
         }
         else if(strcmp(msg, "Server : Welcome to chatting server!!") == 0){
+            // when server sent welcome message, Chatting On
             printf("  Chatting On...\ninput 'Q' to exit\n");
         }
         printf("%s\n",msg);

@@ -6,17 +6,19 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#define MAX_CLIENT 2
+#define MAX_CLIENT 5
 #define PORT 1234
-#define MLIM 128 //message limit
+//message limit
+#define MLIM 128 
 
 void *read_write(void *);
 int clientCount = 0;
+// used for multithread
 struct clientInfo {
-	int index;
-	int client_num;
+	int index; // ascending number to distinguish client
+	int client_num; // result after socket accept
 };
-struct clientInfo ClientInfo[MAX_CLIENT];
+struct clientInfo ClientInfo[MAX_CLIENT]; //shared variable
 
 //for mutex
 pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
@@ -28,7 +30,9 @@ int main(int argc, char *argv[]) {
 	server.sin_family = AF_INET;
 	server.sin_addr.s_addr = htonl(INADDR_ANY);
 	server.sin_port = htons(PORT);
-	int socket_num, client_num, Index = 0;
+	int socket_num, client_num;
+    int Index = 0; // ascending number for distinguish clients
+
 	//purchase phone
 	printf("Server Port : %d\n", PORT);
 	socket_num = socket(AF_INET, SOCK_STREAM, 0);
@@ -38,6 +42,7 @@ int main(int argc, char *argv[]) {
 	printf("open!! server\n");
 
 	//assigned phone number
+    // bind socket and server address
 	int b = bind(socket_num, (struct sockaddr *)&server, sizeof(server));
 	if (b < 0) {
 		printf("fail!! to bind\n");
@@ -53,7 +58,8 @@ int main(int argc, char *argv[]) {
 	while (client_num = accept(socket_num, (struct sockaddr *)&client, (socklen_t *)&clilen)) {
 		int pos = 0; // find empty in ClientInfo
 		if (clientCount < MAX_CLIENT) {
-			pthread_mutex_lock(&mtx);
+			pthread_mutex_lock(&mtx); 
+            // critical zone to protect ClientInfo
 			for (pos = 0; pos < MAX_CLIENT; pos++) {
 				if (ClientInfo[pos].client_num == 0 && ClientInfo[pos].index == 0)
 					break;
@@ -72,8 +78,8 @@ int main(int argc, char *argv[]) {
 		}
 		clientCount++;
 	}
-	/* for (int i = 0; i < MAX_CLIENT; i++)
-		pthread_join(thread_id[i], NULL); */
+	for (int i = 0; i < MAX_CLIENT; i++)
+		pthread_join(thread_id[i], NULL);
 
 	if (client_num < 0) {
 		printf("fail!! to accept\n");
@@ -83,29 +89,30 @@ int main(int argc, char *argv[]) {
 	return 0;
 }
 
+// function executed in thread for read and write client messages
 void *read_write(void *clientDetail) {
 	// client socket
 	pthread_mutex_lock(&mtx);
+	// critical zone
 	struct clientInfo *ClientDetail = (struct clientInfo *)clientDetail;
-	int c_socket = ClientDetail->client_num;
+	int c_socket = ClientDetail->client_num; // current selected thread's socket number
 	int index = ClientDetail->index;
 	//int c_socket = *(int *)client_num;
 	int read_size = 0;
 	char buffer[MLIM];
 	char msg[MLIM + 10];
-    int closed = 0;
+    int closed = 0; // socket state 0 : opened, 1: closed 
 
 	printf("connected to Client %d\n", index);
-	// send message to client
-	// critical zone
+	// send connection message to clients
 	for (int i = 0; i < MAX_CLIENT; i++) {
-		if (ClientInfo[i].client_num == 0)
+		if (ClientInfo[i].client_num == 0) // no accepted clients
 			continue;
-		else if (ClientInfo[i].client_num == c_socket) {
+		else if (ClientInfo[i].client_num == c_socket) { // current selected client
 			bzero(buffer, MLIM);
 			strcpy(buffer, "Server : Welcome to chatting server!!");
 		} else {
-			bzero(buffer, MLIM);
+			bzero(buffer, MLIM); // other accepted clients
 			sprintf(buffer, "Client %d has been connected!", index);
 		}
 		if (send(ClientInfo[i].client_num, buffer, strlen(buffer), 0) < 0) {
@@ -127,18 +134,20 @@ void *read_write(void *clientDetail) {
 		// critical zone
 		buffer[MLIM] = '\0';
 		printf("message from client %d : %s\n", index, buffer);
-		// Close Client n
+		// Close current client
 		if (strcmp(buffer, "Q") == 0) {
             closed = 1;
             sprintf(msg, "Client %d disconnected",index);
 		}
+        // not close client, and add information of who said in message
 		else sprintf(msg, "Client %d : %s", index, buffer);
 		// echo to other clients
 		for (int i = 0; i < MAX_CLIENT; i++) {
 			if (ClientInfo[i].client_num == 0 || ClientInfo[i].client_num == c_socket) {
+                // pass No accepted client or current client
 				continue;
 			}
-			//printf("sending...\n");
+            // send messages.  if fail, close current socket
 			if (send(ClientInfo[i].client_num, msg, strlen(msg), 0) < 0) {
 				printf("fail! to send message to %d\n", ClientInfo[i].index);
 				clientCount--;
@@ -148,8 +157,10 @@ void *read_write(void *clientDetail) {
 				break;
 			}
 		}
+        // empty array for buffer and message
 		bzero(buffer, MLIM);
 		bzero(msg, MLIM + 10);
+        // if current client closed, change ClientInfos
         if(closed){
             ClientDetail->client_num = 0;
             ClientDetail->index = 0;
