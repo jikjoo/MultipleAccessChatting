@@ -1,5 +1,6 @@
-# OperatingSystem
-Multiple Client Chat Program using pthread in C
+# MultipleAccessChatting  
+Operating System Project   
+Multiple Client Chat Program using pthread in C  
 
 ## How to Compile
 Only in Linux
